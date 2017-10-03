@@ -133,7 +133,7 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                 eval_episode_rewards = []
                 eval_qs = []
                 eval_episode_reward = 0.
-                eval_obs = eval_env.reset()
+                total_eval_steps = []
                 eval_done = False
                 max_eval_steps = 1500
                 for t_rollout in range(nb_eval_steps):
@@ -145,19 +145,23 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                         if render_eval:
                             eval_env.render()
                         eval_episode_reward += eval_r
-
                         eval_qs.append(eval_q)
+                        eval_steps += 1
+
                     if eval_done:
                         eval_obs = eval_env.reset()
-                        eval_episode_rewards.append(eval_episode_reward)
-                        eval_episode_rewards_history.append(eval_episode_reward)
-                        eval_episode_reward = 0.
+
+                    eval_episode_rewards.append(eval_episode_reward)
+                    eval_episode_rewards_history.append(eval_episode_reward)
+                    total_eval_steps.append(eval_steps)
+                    eval_episode_reward = 0.
 
                 eval_stats = {}
                 eval_stats['eval/return'] = mpi_mean(eval_episode_rewards)
                 eval_stats['eval/return_history'] = mpi_mean(np.mean(eval_episode_rewards_history))
                 eval_stats['eval/Q'] = mpi_mean(eval_qs)
                 eval_stats['eval/episodes'] = mpi_mean(len(eval_episode_rewards))
+                eval_stats['eval/avg_steps'] = mpi_mean(total_eval_steps)
                 logger.info("Epoch:{}, evaluation stats:".format(epoch))
                 for key in sorted(eval_stats.keys()):
                     logger.record_tabular(key, eval_stats[key])

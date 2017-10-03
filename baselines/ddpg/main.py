@@ -59,7 +59,7 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, outdir, no_hyp, **kwar
 
     if evaluation and rank == 0:
         eval_env = make_env(env_id)
-        eval_env = bench.Monitor(eval_env, os.path.join(logger.get_dir(), 'gym_eval'))
+        eval_env = bench.Monitor(eval_env, os.path.join(logger.get_dir(), 'gym_eval'), allow_early_resets=True)
         # env = bench.Monitor(env, None)
     else:
         eval_env = None
