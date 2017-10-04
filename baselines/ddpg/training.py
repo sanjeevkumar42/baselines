@@ -66,11 +66,11 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
         epoch_episode_steps = []
         epoch_episode_eval_rewards = []
         epoch_episode_eval_steps = []
-        epoch_start_time = time.time()
         epoch_actions = []
         epoch_qs = []
         epoch_episodes = 0
         for epoch in range(nb_epochs):
+            epoch_start_time = time.time()
             for cycle in range(nb_epoch_cycles):
                 # Perform rollouts.
                 for t_rollout in range(nb_rollout_steps):
@@ -136,6 +136,7 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                 total_eval_steps = []
                 eval_done = False
                 max_eval_steps = 1500
+                solved_envs = 0
                 for t_rollout in range(nb_eval_steps):
                     eval_steps = 0
                     while not eval_done and eval_steps < max_eval_steps:
@@ -144,9 +145,13 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                             max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
                         if render_eval:
                             eval_env.render()
+                            time.sleep(0.01)
                         eval_episode_reward += eval_r
                         eval_qs.append(eval_q)
                         eval_steps += 1
+
+                    if eval_episode_reward > 0:
+                        solved_envs += 1
 
                     if eval_done:
                         eval_obs = eval_env.reset()
@@ -156,15 +161,19 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                     total_eval_steps.append(eval_steps)
                     eval_episode_reward = 0.
 
+                logger.info("Eval steps:{}, episode rewards:{}".format(total_eval_steps, eval_episode_rewards))
                 eval_stats = {}
                 eval_stats['eval/return'] = mpi_mean(eval_episode_rewards)
                 eval_stats['eval/return_history'] = mpi_mean(np.mean(eval_episode_rewards_history))
                 eval_stats['eval/Q'] = mpi_mean(eval_qs)
                 eval_stats['eval/episodes'] = mpi_mean(len(eval_episode_rewards))
                 eval_stats['eval/avg_steps'] = mpi_mean(total_eval_steps)
+                eval_stats['eval/solved_envs'] = mpi_mean(solved_envs)
                 logger.info("Epoch:{}, evaluation stats:".format(epoch))
                 for key in sorted(eval_stats.keys()):
                     logger.record_tabular(key, eval_stats[key])
+                logger.dump_tabular()
+                logger.info('')
 
 
             # Log stats.

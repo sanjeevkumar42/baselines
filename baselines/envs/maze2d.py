@@ -27,7 +27,6 @@ class Maze2D(gym.Env):
         self.maze_shape = maze_shape
         self.viewer = None
         self.total_steps = 0
-        self.total_dist = 0.0
         self.obstacles = obstacles
         self.targets = targets
         self.frameskip = frame_skip
@@ -49,10 +48,10 @@ class Maze2D(gym.Env):
 
         self.laststeps = []
 
-    def hit_obstacle1(self, x1, y1, x2, y2):
+    def hit_shape(self, x1, y1, x2, y2, shapes):
         if x2 < 0 or x2 >= self.maze_shape[0] or y2 < 0 or y2 >= self.maze_shape[1]:
             return True
-        for o in self.obstacles:
+        for o in shapes:
             if o[0] == 1:
                 ot, cx, cy, r = o
 
@@ -65,8 +64,7 @@ class Maze2D(gym.Env):
                 st, sx, sy, sh, sw = o
                 box = np.array([[sx - sh, sx + sh], [sy - sw, sy + sw]])
                 box = np.clip(box, [0, 0], [self.grid.shape[0] - 1, self.grid.shape[1] - 1])
-                l1 = ((x1, y1), (x2, y2))
-                box[0][0],
+                # l1 = ((x1, y1), (x2, y2))
                 if box[0][0] <= x2 <= box[0][1] and box[1][0] <= y2 <= box[1][1]:
                     return True
         return False
@@ -84,22 +82,6 @@ class Maze2D(gym.Env):
                 return False
         else:
             return False
-
-    def hit_obstacle(self, x, y):
-        if x < 0 or x >= self.maze_shape[0] or y < 0 or y >= self.maze_shape[1]:
-            return True
-        for o in self.obstacles:
-            if o[0] == 1:
-                ot, ox, oy, o_r = o
-                if (x - ox) ** 2 + (y - oy) ** 2 - o_r ** 2 <= 0:
-                    return True
-            elif o[0] == 2:
-                st, sx, sy, sh, sw = o
-                box = np.array([[sx - sh, sx + sh], [sy - sw, sy + sw]])
-                box = np.clip(box, [0, 0], [self.grid.shape[0] - 1, self.grid.shape[1] - 1])
-                if box[0][0] <= x <= box[0][1] and box[1][0] <= y <= box[1][1]:
-                    return True
-        return False
 
     def obs_grid(self, x, y):
         if self.obs_complete:
@@ -120,20 +102,6 @@ class Maze2D(gym.Env):
 
             return obs_grid
 
-    def hit_target(self, x, y):
-        for t in self.targets:
-            if t[0] == 1:
-                tt, tx, ty, tr = t
-                if (x - tx) ** 2 + (y - ty) ** 2 - tr ** 2 <= 0:
-                    return True
-            elif t[0] == 2:
-                st, sx, sy, sh, sw = t
-                box = np.array([[sx - sh, sx + sh], [sy - sw, sy + sw]])
-                box = np.clip(box, [0, 0], [self.grid.shape[0] - 1, self.grid.shape[1] - 1])
-                if box[0][0] <= x <= box[0][1] and box[1][0] <= y <= box[1][1]:
-                    return True
-        return False
-
     def _step(self, action):
         """
         Args:
@@ -143,58 +111,65 @@ class Maze2D(gym.Env):
         """
 
         theta = action[0]
-        # theta = (theta + 1) / 2.0
-        # r = (r + 1) / 2.0
         r = 1.0
         sina = math.sin(math.pi * theta)
         cosa = math.cos(math.pi * theta)
 
         new_x, new_y = self.lastx + r * cosa, self.lasty + r * sina
         done = False
-        # print('New pos:{}, pos:{}, r:{}, angle:{}'.format(new_x, new_y, r, math.pi * theta))
-        if self.hit_obstacle1(self.lastx, self.lasty, new_x, new_y):
+        if self.total_steps > self.maze_shape[0] * self.maze_shape[1]:
             reward = -10.0
-            self.grid[int(self.lastx), int(self.lasty)] = Maze2D.MAZE_STATE.VISITED
-            self.lastx = new_x
-            self.lasty = new_y
             done = True
-        elif self.hit_target(self.lastx, self.lasty):
-            reward = 10
+        elif new_x < 0 or new_x >= self.maze_shape[0] or new_y < 0 or new_y >= self.maze_shape[1] or self.grid[
+            int(new_x), int(new_y)] == Maze2D.MAZE_STATE.OBSTACLE:
+            reward = -10.0
             done = True
-        elif self.hit_target(new_x, new_y):
-            reward = 10
+        elif self.grid[int(new_x), int(new_y)] == Maze2D.MAZE_STATE.TARGET:
+            reward = 10.0
             done = True
-            self.grid[int(self.lastx), int(self.lasty)] = Maze2D.MAZE_STATE.VISITED
-            self.lastx = new_x
-            self.lasty = new_y
         else:
-            if len(self.laststeps) == 10:
-                self.laststeps.pop(0)
-            self.laststeps.append((new_x, new_y))
-
-            reward = math.sqrt(
-                (self.laststeps[0][0] - self.laststeps[-1][0]) ** 2 + (self.laststeps[0][1] - self.laststeps[-1][
-                    1]) ** 2)
-
-            reward = reward / 10.0 if reward > 5.0 else 0.0
-            self.total_steps += 1
-            if self.grid[int(new_x), int(new_y)] == Maze2D.MAZE_STATE.OBSTACLE:
-                print("Something wrong")
-            else:
-                self.grid[int(new_x), int(new_y)] = Maze2D.MAZE_STATE.CURRRENT_POS
-                self.grid[int(self.lastx), int(self.lasty)] = Maze2D.MAZE_STATE.VISITED
-            self.total_dist += r
+            reward = 0.0
+            self.grid[int(new_x), int(new_y)] = Maze2D.MAZE_STATE.CURRRENT_POS
+            self.grid[int(self.lastx), int(self.lasty)] = Maze2D.MAZE_STATE.VISITED
             self.lastx = new_x
             self.lasty = new_y
+        # print('New pos:{}, pos:{}, r:{}, angle:{}'.format(new_x, new_y, r, math.pi * theta))
+        # if self.hit_shape(self.lastx, self.lasty, new_x, new_y, self.obstacles):
+        #     reward = -10.0
+        #     self.grid[int(self.lastx), int(self.lasty)] = Maze2D.MAZE_STATE.VISITED
+        #     self.lastx = new_x
+        #     self.lasty = new_y
+        #     done = True
+        # elif self.hit_shape(self.lastx, self.lasty, new_x, new_y, self.targets):
+        #     reward = 10
+        #     done = True
+        #     self.grid[int(self.lastx), int(self.lasty)] = Maze2D.MAZE_STATE.VISITED
+        #     self.lastx = new_x
+        #     self.lasty = new_y
+        # else:
+        #     if len(self.laststeps) == 20:
+        #         self.laststeps.pop(0)
+        #     self.laststeps.append((new_x, new_y))
+        #
+        #     reward = 0.0
+        #     self.total_steps += 1
+        #     if self.grid[int(new_x), int(new_y)] == Maze2D.MAZE_STATE.OBSTACLE:
+        #         reward = -10
+        #         pass
+        #     else:
+        #         self.grid[int(new_x), int(new_y)] = Maze2D.MAZE_STATE.CURRRENT_POS
+        #         self.grid[int(self.lastx), int(self.lasty)] = Maze2D.MAZE_STATE.VISITED
+        #         self.lastx = new_x
+        #         self.lasty = new_y
         # print('action :{}, position: ({},{})'.format(action, self.lastx, self.lasty))
 
+        self.total_steps += 1
         return self.obs_grid(self.lastx, self.lasty).flatten(), reward, done, {}
 
     def _reset(self):
         self.grid = self.__build_maze()
         self.total_steps = 0
 
-        self.total_dist = 0.0
         self.done = False
         return self.obs_grid(self.lastx, self.lasty).flatten()
 
@@ -217,7 +192,7 @@ class Maze2D(gym.Env):
         self.laststeps.append((self.lastx, self.lasty))
 
         self.targets = self.find_empty_targets(grid)
-        print('Targets:{}'.format(self.targets))
+        # print('Targets:{}'.format(self.targets))
         for t in self.targets:
             fill_shape(grid, t, value=Maze2D.MAZE_STATE.TARGET)
 

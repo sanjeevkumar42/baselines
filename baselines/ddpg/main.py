@@ -34,7 +34,7 @@ def make_env(env_id):
         # obst = [(2, 30, 30, 5, 10), (2, 30, 60, 5, 10), (2, 65, 65, 35, 5),
         #         (1, 30, 75, 5), (1, 5, 45, 5), (2, 65, 20, 5, 20)]
         obst = [(2, 22, 6, 2, 6), (2, 10, 10, 2, 3), (2, 18, 20, 10, 2),
-                (1, 2, 14, 2), (1, 5, 28, 1)]
+                (2, 2, 14, 2, 2), (2, 5, 28, 1, 4)]
         # env = Maze2D(maze_shape=(32, 32), obstacles=obst, targets=[(1, 30, 30, 2)])
         env = Maze2D(maze_shape=(32, 32), obstacles=obst, targets=[(1, 30, 30, 2)], obs_area=8, obs_complete=False)
         return env
@@ -192,7 +192,7 @@ def parse_args():
     parser.add_argument('--nb-epochs', type=int, default=500)  # with default settings, perform 1M steps total
     parser.add_argument('--nb-epoch-cycles', type=int, default=20)
     parser.add_argument('--nb-train-steps', type=int, default=50)  # per epoch cycle and MPI worker
-    parser.add_argument('--nb-eval-steps', type=int, default=10)  # per epoch cycle and MPI worker
+    parser.add_argument('--nb-eval-steps', type=int, default=100)  # per epoch cycle and MPI worker
     parser.add_argument('--nb-rollout-steps', type=int, default=1200)  # per epoch cycle and MPI worker
     parser.add_argument('--noise-type', type=str,
                         default='adaptive-param_0.2')  # choices are adaptive-param_xx, ou_xx, normal_xx, none
