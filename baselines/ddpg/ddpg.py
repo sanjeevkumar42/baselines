@@ -95,13 +95,16 @@ class DDPG(object):
         if self.normalize_observations:
             with tf.variable_scope('obs_rms'):
                 self.obs_rms = RunningMeanStd(shape=observation_shape)
+                # self.obs_rms.mean = 0.335
+                # self.obs_rms.std = 3.26
         else:
             self.obs_rms = None
         normalized_obs0 = tf.clip_by_value(normalize(self.obs0, self.obs_rms),
             self.observation_range[0], self.observation_range[1])
         normalized_obs1 = tf.clip_by_value(normalize(self.obs1, self.obs_rms),
             self.observation_range[0], self.observation_range[1])
-
+        self.normalized_obs0 = normalized_obs0
+        self.normalized_obs1 = normalized_obs1
         # Return normalization.
         if self.normalize_returns:
             with tf.variable_scope('ret_rms'):

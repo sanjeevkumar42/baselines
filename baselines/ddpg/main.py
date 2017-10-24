@@ -49,10 +49,10 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, outdir, no_hyp, **kwar
 
     # Create envs.
     env = make_env(env_id)
-    timestamp = str(datetime.datetime.now()).replace(' ', '_').replace(':', '_')
-    outdir = os.path.join(outdir, env_id, str(no_hyp), timestamp)
+    outdir = os.path.join(outdir, env_id, '{}_{}'.format(no_hyp, kwargs['nb_epochs']))
     logger.configure(outdir)
     os.makedirs(outdir, exist_ok=True)
+
     env = bench.Monitor(env, os.path.join(outdir, "%i.monitor.json" % rank))
     gym.logger.setLevel(logging.WARN)
     logger.info('Output directory:{}, env:{}, no_hyp:{}'.format(outdir, env_id, no_hyp))
@@ -137,8 +137,8 @@ def evaluate(env, nb_episodes, reward_scale, render, param_noise, action_noise, 
     with U.single_threaded_session() as sess:
         agent.initialize(sess)
         if weight_file:
-            # saver = tf.train.Saver(actor.trainable_vars + critic.trainable_vars)
-            # saver.restore(sess, weight_file)
+            saver = tf.train.Saver(actor.trainable_vars + critic.trainable_vars)
+            saver.restore(sess, weight_file)
             # agent.actor_optimizer.sync()
             # agent.critic_optimizer.sync()
             pass
@@ -147,7 +147,7 @@ def evaluate(env, nb_episodes, reward_scale, render, param_noise, action_noise, 
         agent.reset()
         obs = env.reset()
         total_reward = 0.0
-        max_steps = 100
+        max_steps = 2000
         for ep in range(nb_episodes):
             i = 0
             done = False
@@ -157,15 +157,16 @@ def evaluate(env, nb_episodes, reward_scale, render, param_noise, action_noise, 
                 assert action.shape == env.action_space.shape
 
                 assert max_action.shape == action.shape
-                new_obs, r, done, info = env.step(max_action * action)
+                obs, r, done, info = env.step(max_action * action)
                 episode_reward += r
                 env.render()
-                print('Action:{}, reward:{}'.format(action, r))
-                time.sleep(0.1)
+                # print('Action:{}, reward:{}'.format(action, r))
+                # time.sleep(0.1)
                 i += 1
             total_reward += episode_reward
             logger.info("Episode:{}, reward:{}, steps:{}".format(ep, episode_reward, i))
-            obs = env.reset()
+            if done:
+                obs = env.reset()
 
         logger.info("Average reward:{}, total reward:{}, episodes:{}".format((total_reward / nb_episodes), total_reward,
                                                                              nb_episodes))
@@ -189,18 +190,18 @@ def parse_args():
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--reward-scale', type=float, default=1.)
     parser.add_argument('--clip-norm', type=float, default=None)
-    parser.add_argument('--nb-epochs', type=int, default=500)  # with default settings, perform 1M steps total
+    parser.add_argument('--nb-epochs', type=int, default=2000)  # with default settings, perform 1M steps total
     parser.add_argument('--nb-epoch-cycles', type=int, default=20)
     parser.add_argument('--nb-train-steps', type=int, default=50)  # per epoch cycle and MPI worker
     parser.add_argument('--nb-eval-steps', type=int, default=100)  # per epoch cycle and MPI worker
-    parser.add_argument('--nb-rollout-steps', type=int, default=1200)  # per epoch cycle and MPI worker
+    parser.add_argument('--nb-rollout-steps', type=int, default=100)  # per epoch cycle and MPI worker
     parser.add_argument('--noise-type', type=str,
                         default='adaptive-param_0.2')  # choices are adaptive-param_xx, ou_xx, normal_xx, none
     parser.add_argument('--no-hyp', type=int, default=1)
     parser.add_argument('--outdir', default='/data/out/')
     parser.add_argument('--weight-file', default=None)
 
-    boolean_flag(parser, 'evaluation', default=False)
+    boolean_flag(parser, 'evaluation', default=True)
     return vars(parser.parse_args())
 
 

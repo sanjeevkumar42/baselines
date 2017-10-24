@@ -128,16 +128,16 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
 
             # Evaluate.
 
-            if epoch % 100 == 0 and eval_env is not None:
+            if epoch > 0 and epoch % 50 == 0 and eval_env is not None:
                 logger.info("Starting evaluation")
                 eval_episode_rewards = []
                 eval_qs = []
                 eval_episode_reward = 0.
                 total_eval_steps = []
                 eval_done = False
-                max_eval_steps = 1500
+                max_eval_steps = 2000
                 solved_envs = 0
-                for t_rollout in range(nb_eval_steps):
+                for t_rollout in range(10): # evaluate for 10 episodes
                     eval_steps = 0
                     while not eval_done and eval_steps < max_eval_steps:
                         eval_action, eval_q = agent.pi(eval_obs, apply_noise=False, compute_Q=True)
@@ -145,7 +145,6 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                             max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
                         if render_eval:
                             eval_env.render()
-                            time.sleep(0.01)
                         eval_episode_reward += eval_r
                         eval_qs.append(eval_q)
                         eval_steps += 1
@@ -155,6 +154,7 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
 
                     if eval_done:
                         eval_obs = eval_env.reset()
+                        eval_done = False
 
                     eval_episode_rewards.append(eval_episode_reward)
                     eval_episode_rewards_history.append(eval_episode_reward)
@@ -174,7 +174,6 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                     logger.record_tabular(key, eval_stats[key])
                 logger.dump_tabular()
                 logger.info('')
-
 
             # Log stats.
             epoch_train_duration = time.time() - epoch_start_time
@@ -218,7 +217,7 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                 if eval_env and hasattr(eval_env, 'get_state'):
                     with open(os.path.join(logdir, 'eval_env_state.pkl'), 'wb') as f:
                         pickle.dump(eval_env.get_state(), f)
-            if epoch % 20 == 0 and outdir:
+            if epoch > 0 and epoch % 50 == 0 and outdir:
                 weight_file = os.path.join(outdir, 'model.ckpt')
                 logger.info('Saving weights to :{}, epoch:{}'.format(weight_file, epoch))
-                saver.save(sess, weight_file, global_step=int(epoch % 20))
+                saver.save(sess, weight_file, global_step=epoch)
