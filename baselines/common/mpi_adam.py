@@ -1,7 +1,11 @@
+import time
 from mpi4py import MPI
 import baselines.common.tf_util as U
 import tensorflow as tf
 import numpy as np
+
+from baselines.common.time_utils import time_it
+
 
 class MpiAdam(object):
     def __init__(self, var_list, *, beta1=0.9, beta2=0.999, epsilon=1e-08, scale_grad_by_procs=True, comm=None):
@@ -18,12 +22,14 @@ class MpiAdam(object):
         self.getflat = U.GetFlat(var_list)
         self.comm = MPI.COMM_WORLD if comm is None else comm
 
+    # @time_it
     def update(self, localg, stepsize):
         if self.t % 100 == 0:
             self.check_synced()
         localg = localg.astype('float32')
         globalg = np.zeros_like(localg)
         self.comm.Allreduce(localg, globalg, op=MPI.SUM)
+
         if self.scale_grad_by_procs:
             globalg /= self.comm.Get_size()
 

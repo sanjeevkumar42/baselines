@@ -1,11 +1,18 @@
 import sys
 
+from baselines.envs.env_wrappers import make_env
+from baselines.envs.torcs_env import TorcsEnv, SensorBasedTorcsEnv
+
 if hasattr(sys, '__plen'):
     new = sys.path[sys.__plen:]
     del sys.path[sys.__plen:]
     p = getattr(sys, '__egginsert', 0)
     sys.path[p:p] = new
     sys.__egginsert = p + len(new)
+
+from baselines.ddpg import models
+from baselines.envs import env_wrappers, exp_utils
+
 from baselines.ddpg.ddpg import DDPG
 from baselines.envs.maze2d import Maze2D
 import argparse
@@ -29,36 +36,28 @@ from mpi4py import MPI
 import baselines.common.tf_util as U
 
 
-def make_env(env_id):
-    if env_id == 'Maze2D-v0':
-        # obst = [(2, 30, 30, 5, 10), (2, 30, 60, 5, 10), (2, 65, 65, 35, 5),
-        #         (1, 30, 75, 5), (1, 5, 45, 5), (2, 65, 20, 5, 20)]
-        obst = [(2, 22, 6, 2, 6), (2, 10, 10, 2, 3), (2, 18, 20, 10, 2),
-                (2, 2, 14, 2, 2), (2, 5, 28, 1, 4)]
-        # env = Maze2D(maze_shape=(32, 32), obstacles=obst, targets=[(1, 30, 30, 2)])
-        env = Maze2D(maze_shape=(32, 32), obstacles=obst, targets=[(1, 30, 30, 2)], obs_area=8, obs_complete=False)
-        return env
-    else:
-        return gym.make(env_id)
-
-
 def run(env_id, seed, noise_type, layer_norm, evaluation, outdir, no_hyp, **kwargs):
+    params = locals()
     # Configure things.
-    rank = MPI.COMM_WORLD.Get_rank()
-    if rank != 0: logger.set_level(logger.DISABLED)
-
+    # rank = MPI.COMM_WORLD.Get_rank()
+    # if rank != 0: logger.set_level(logger.DISABLED)
+    rank = 0
     # Create envs.
     env = make_env(env_id)
-    outdir = os.path.join(outdir, env_id, '{}_{}'.format(no_hyp, kwargs['nb_epochs']))
+    weight_file = kwargs.pop('weight_file')
+    if not weight_file:
+        outdir = exp_utils.prepare_exp_dirs(params, outdir, env_id)
+    else:
+        outdir = exp_utils.prepare_exp_dirs(params, outdir, env_id, 'eval')
     logger.configure(outdir)
     os.makedirs(outdir, exist_ok=True)
 
     env = bench.Monitor(env, os.path.join(outdir, "%i.monitor.json" % rank))
     gym.logger.setLevel(logging.WARN)
     logger.info('Output directory:{}, env:{}, no_hyp:{}'.format(outdir, env_id, no_hyp))
-
-    if evaluation and rank == 0:
+    if evaluation:
         eval_env = make_env(env_id)
+        eval_env.seed(42)
         eval_env = bench.Monitor(eval_env, os.path.join(logger.get_dir(), 'gym_eval'), allow_early_resets=True)
         # env = bench.Monitor(env, None)
     else:
@@ -86,7 +85,10 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, outdir, no_hyp, **kwar
             raise RuntimeError('unknown noise type "{}"'.format(current_noise_type))
 
     # Configure components.
-    memory = Memory(limit=int(1e6), action_shape=env.action_space.shape, observation_shape=env.observation_space.shape)
+    memory = Memory(limit=int(1e5), action_shape=env.action_space.shape, observation_shape=env.observation_space.shape)
+
+    # critic = models.ConvCritic(layer_norm=layer_norm)
+    # actor = models.ConvActor(nb_actions, layer_norm=layer_norm, no_hyp=no_hyp)
     critic = Critic(layer_norm=layer_norm)
     actor = Actor(nb_actions, layer_norm=layer_norm, no_hyp=no_hyp)
 
@@ -102,7 +104,7 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, outdir, no_hyp, **kwar
     # Disable logging for rank != 0 to avoid noise.
     if rank == 0:
         start_time = time.time()
-    weight_file = kwargs.pop('weight_file')
+
     if weight_file:
         evaluate(env, nb_episodes=kwargs.get('nb_epochs', 100), reward_scale=kwargs.get('reward_scale'),
                  render=kwargs.get('render'), param_noise=None, action_noise=None, actor=actor,
@@ -111,7 +113,8 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, outdir, no_hyp, **kwar
                  memory=memory, weight_file=weight_file, )
     else:
         training.train(env=env, eval_env=eval_env, param_noise=param_noise,
-                       action_noise=action_noise, actor=actor, critic=critic, memory=memory, outdir=outdir, **kwargs)
+                       action_noise=action_noise, actor=actor, critic=critic, memory=memory, outdir=outdir,
+                       no_hyp=no_hyp, **kwargs)
     env.close()
     if eval_env is not None:
         eval_env.close()
@@ -139,10 +142,9 @@ def evaluate(env, nb_episodes, reward_scale, render, param_noise, action_noise, 
         if weight_file:
             saver = tf.train.Saver(actor.trainable_vars + critic.trainable_vars)
             saver.restore(sess, weight_file)
-            # agent.actor_optimizer.sync()
-            # agent.critic_optimizer.sync()
-            pass
-        sess.graph.finalize()
+            agent.actor_optimizer.sync()
+            agent.critic_optimizer.sync()
+        # sess.graph.finalize()
 
         agent.reset()
         obs = env.reset()
@@ -153,13 +155,13 @@ def evaluate(env, nb_episodes, reward_scale, render, param_noise, action_noise, 
             done = False
             episode_reward = 0.0
             while not done and i < max_steps:
-                action, q = agent.pi(obs, apply_noise=False, compute_Q=True)
+                action, q, all_actions, sample = agent.pi(obs, apply_noise=False, compute_Q=True)
                 assert action.shape == env.action_space.shape
 
                 assert max_action.shape == action.shape
                 obs, r, done, info = env.step(max_action * action)
                 episode_reward += r
-                env.render()
+                # env.render()
                 # print('Action:{}, reward:{}'.format(action, r))
                 # time.sleep(0.1)
                 i += 1
@@ -196,7 +198,7 @@ def parse_args():
     parser.add_argument('--nb-eval-steps', type=int, default=100)  # per epoch cycle and MPI worker
     parser.add_argument('--nb-rollout-steps', type=int, default=100)  # per epoch cycle and MPI worker
     parser.add_argument('--noise-type', type=str,
-                        default='adaptive-param_0.2')  # choices are adaptive-param_xx, ou_xx, normal_xx, none
+                        default='ou_0.2')  # choices are adaptive-param_xx, ou_xx, normal_xx, none
     parser.add_argument('--no-hyp', type=int, default=1)
     parser.add_argument('--outdir', default='/data/out/')
     parser.add_argument('--weight-file', default=None)

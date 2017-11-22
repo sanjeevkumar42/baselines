@@ -48,6 +48,7 @@ class Memory(object):
         self.rewards = RingBuffer(limit, shape=(1,))
         self.terminals1 = RingBuffer(limit, shape=(1,))
         self.observations1 = RingBuffer(limit, shape=observation_shape)
+        self.action_idx = RingBuffer(limit, shape=(1,), dtype='int32')
 
     def sample(self, batch_size):
         # Draw such that we always have a proceeding element.
@@ -58,6 +59,7 @@ class Memory(object):
         action_batch = self.actions.get_batch(batch_idxs)
         reward_batch = self.rewards.get_batch(batch_idxs)
         terminal1_batch = self.terminals1.get_batch(batch_idxs)
+        action_idx_batch = self.action_idx.get_batch(batch_idxs)
 
         result = {
             'obs0': array_min2d(obs0_batch),
@@ -65,18 +67,20 @@ class Memory(object):
             'rewards': array_min2d(reward_batch),
             'actions': array_min2d(action_batch),
             'terminals1': array_min2d(terminal1_batch),
+            'action_idx': array_min2d(action_idx_batch)
         }
         return result
 
-    def append(self, obs0, action, reward, obs1, terminal1, training=True):
+    def append(self, obs0, action, reward, obs1, terminal1, action_idx, training=True):
         if not training:
             return
-        
+
         self.observations0.append(obs0)
         self.actions.append(action)
         self.rewards.append(reward)
         self.observations1.append(obs1)
         self.terminals1.append(terminal1)
+        self.action_idx.append(action_idx)
 
     @property
     def nb_entries(self):

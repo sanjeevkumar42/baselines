@@ -3,8 +3,8 @@ import time
 import gym
 import numpy as np
 import tensorflow as tf
-from mpi4py import MPI
-from baselines.common.mpi_moments import mpi_moments
+# from mpi4py import MPI
+# from baselines.common.mpi_moments import mpi_moments
 
 
 def reduce_var(x, axis=None, keepdims=False):
